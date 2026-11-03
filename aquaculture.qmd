@@ -1,0 +1,123 @@
+---
+title: "Prioritizing potential aquaculture"
+author: "Courtney Lorey"
+date: 2026-11-5
+format: typst
+---
+
+## Objective
+Determine which Exclusive Economic Zones (EEZ) on the West Coast of the US are best suited to developing marine aquaculture for several species of oysters and *Mytilus galloprovincialis* (Mediterranean mussels). Suitable locations will be determined based on range of suitable sea surface temperature (SST) and depth values for the species.
+
+## Load packages
+```{r}
+#| echo: true
+#| output: false
+
+library(tidyverse)
+library(spDataLarge)
+library(sf)
+library(tmap)
+library(gt)
+library(viridisLite)
+library(terra)
+library(stars)
+```
+
+## Prepare data 
+
+```{r}
+# Load EEZ data
+eez <- st_read("/Users/courtneylorey/Desktop/GitHub/eds223/eds223-aquaculture/data/wc_regions_clean.shp")
+
+# Load bathymetry data
+depth <- rast("/Users/courtneylorey/Desktop/GitHub/eds223/eds223-aquaculture/data/depth.tif")
+
+# Load SST rasters
+sst8 <- rast("/Users/courtneylorey/Desktop/GitHub/eds223/eds223-aquaculture/data/average_annual_sst_2008.tif")
+sst9 <- rast("/Users/courtneylorey/Desktop/GitHub/eds223/eds223-aquaculture/data/average_annual_sst_2009.tif")
+sst10 <- rast("/Users/courtneylorey/Desktop/GitHub/eds223/eds223-aquaculture/data/average_annual_sst_2010.tif")
+sst11 <- rast("/Users/courtneylorey/Desktop/GitHub/eds223/eds223-aquaculture/data/average_annual_sst_2011.tif")
+sst12 <- rast("/Users/courtneylorey/Desktop/GitHub/eds223/eds223-aquaculture/data/average_annual_sst_2012.tif")
+```
+
+# Process data
+```{r}
+# Combine SST data into one averaged raster 
+sst_merged <- c(sst8, sst9, sst10, sst11, sst12)
+plot(sst_merged)
+
+sst_mean <- mean(sst_merged, na.rm = TRUE) 
+plot(sst_mean)
+
+# Convert average SST from Kelvin to Celsius
+sst_c <- sst_mean - 273.15
+plot(sst_c)
+
+# Inspect resolutions and extent
+cat("=== Bathymetry ===\n")
+cat("Resolution:", res(depth), "\n")
+cat("Extent:    "); print(ext(depth))
+
+cat("\n=== Sea Surface Temperature (Celsius) ===\n")
+cat("Resolution:", res(sst_c), "\n")
+cat("Extent:    "); print(ext(sst_c))
+
+# Check if coordinate reference systems match
+if(crs(depth) == crs(eez)) {
+  print("Coordinate reference systems match")
+} else{
+  warning("Updating coordinate reference systems to match")
+  # transform data to match
+  crs(depth) <- crs(eez)
+}
+
+# check if coordinate reference systems match
+if(crs(sst_c) == crs(eez)) {
+  print("Coordinate reference systems match")
+} else{
+  warning("Updating coordinate reference systems to match")
+  # transform data to match
+  crs(sst_c) <- crs(eez)
+}
+
+# check if coordinate reference systems match
+if(crs(sst_c) == crs(depth)) {
+  print("Coordinate reference systems match")
+} else{
+  warning("Updating coordinate reference systems to match")
+  # transform data to match
+  crs(sst_c) <- crs(depth)
+}
+
+# Crop depth raster to match the extent of the SST raster (note: the resolutions of the SST and depth data do not match)
+print(ext(sst_c))
+sst_ext <- ext(-131.98475232999999, -114.98671702755556, 29.993052252666669, 49.988422964000002)
+depth_crop <- crop(depth, sst_ext)
+
+cat("=== Depth crop vs. SST resolution ===\n")
+cat("Depth crop resolution:", res(depth_crop), "\n")
+cat("Resolution:", res(sst_c), "\n")
+
+# Resample the depth data to match the resolution of the SST data using the bilinear method approach
+resample_depth <- resample(depth_crop, y = sst_c, method = "bilinear")
+dim(resample_depth)
+dim(sst_c)
+plot(resample_depth)
+
+# Check that the depth and SST match in resolution, extent, and coordinate reference system (hint: can the rasters be stacked?)
+
+cat("=== Resampled depth vs. SST resolution ===\n")
+cat("Resampled depth resolution:", res(resample_depth), "\n")
+cat("SST resolution:", res(sst_c), "\n")
+
+cat("=== Resampled depth vs. SST extent ===\n")
+cat("Resampled depth extent:    "); print(ext(resample_depth))
+cat("SST extent:    "); print(ext(sst_c))
+
+cat("=== Resampled depth vs. SST crs ===\n")
+cat("Resampled depth crs:", crs(resample_depth), "\n")
+cat("SST crs:", crs(sst_c), "\n")
+
+sst_depth <- c(sst_c, resample_depth)
+plot(sst_depth)
+```
