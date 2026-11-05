@@ -3,6 +3,11 @@ title: "Prioritizing potential aquaculture"
 author: "Courtney Lorey"
 date: 2026-11-5
 format: typst
+execute:
+  echo: true
+  warning: false
+  message: false
+  results: hide
 ---
 
 ## Objective
@@ -21,6 +26,7 @@ library(gt)
 library(viridisLite)
 library(terra)
 library(stars)
+library(kableExtra)
 ```
 
 ## Prepare data 
@@ -44,30 +50,17 @@ sst12 <- rast("/Users/courtneylorey/Desktop/GitHub/eds223/eds223-aquaculture/dat
 ```{r}
 # Combine SST data into one averaged raster 
 sst_merged <- c(sst8, sst9, sst10, sst11, sst12)
-plot(sst_merged)
 
 sst_mean <- mean(sst_merged, na.rm = TRUE) 
-plot(sst_mean)
 
 # Convert average SST from Kelvin to Celsius
 sst_c <- sst_mean - 273.15
-plot(sst_c)
 
-# Inspect resolutions and extent
-cat("=== Bathymetry ===\n")
-cat("Resolution:", res(depth), "\n")
-cat("Extent:    "); print(ext(depth))
-
-cat("\n=== Sea Surface Temperature (Celsius) ===\n")
-cat("Resolution:", res(sst_c), "\n")
-cat("Extent:    "); print(ext(sst_c))
-
-# Check if coordinate reference systems match
+# Check if coordinate reference systems, resolutions, and extents match
 if(crs(depth) == crs(eez)) {
   print("Coordinate reference systems match")
 } else{
   warning("Updating coordinate reference systems to match")
-  # transform data to match
   crs(depth) <- crs(eez)
 }
 
@@ -76,7 +69,6 @@ if(crs(sst_c) == crs(eez)) {
   print("Coordinate reference systems match")
 } else{
   warning("Updating coordinate reference systems to match")
-  # transform data to match
   crs(sst_c) <- crs(eez)
 }
 
@@ -85,13 +77,11 @@ if(crs(sst_c) == crs(depth)) {
   print("Coordinate reference systems match")
 } else{
   warning("Updating coordinate reference systems to match")
-  # transform data to match
   crs(sst_c) <- crs(depth)
 }
 
-# Crop depth raster to match the extent of the SST raster (note: the resolutions of the SST and depth data do not match)
-print(ext(sst_c))
-sst_ext <- ext(-131.98475232999999, -114.98671702755556, 29.993052252666669, 49.988422964000002)
+# Crop depth raster to match the extent of the SST raster
+sst_ext <- ext(sst_c)
 depth_crop <- crop(depth, sst_ext)
 
 cat("=== Depth crop vs. SST resolution ===\n")
@@ -100,11 +90,8 @@ cat("Resolution:", res(sst_c), "\n")
 
 # Resample the depth data to match the resolution of the SST data using the bilinear method approach
 resample_depth <- resample(depth_crop, y = sst_c, method = "bilinear")
-dim(resample_depth)
-dim(sst_c)
-plot(resample_depth)
 
-# Check that the depth and SST match in resolution, extent, and coordinate reference system (hint: can the rasters be stacked?)
+# Check that the depth and SST match in resolution, extent, and coordinate reference system
 
 cat("=== Resampled depth vs. SST resolution ===\n")
 cat("Resampled depth resolution:", res(resample_depth), "\n")
@@ -119,5 +106,130 @@ cat("Resampled depth crs:", crs(resample_depth), "\n")
 cat("SST crs:", crs(sst_c), "\n")
 
 sst_depth <- c(sst_c, resample_depth)
-plot(sst_depth)
+```
+
+Suitable range: 
+Depth - 0-70 m 
+Temp - 11-30 degress
+
+```{r}
+# Create depth matrix
+rcl_depth <- matrix(c(
+   -Inf, -70,  0,
+   -70,  0,  1,
+   0, Inf, 0
+), ncol = 3, byrow = TRUE)
+
+# Create SST matrix
+rcl_SST <- matrix(c(
+   -Inf, 11,  0,
+   11,  30,  1,
+   30, Inf, 0
+), ncol = 3, byrow = TRUE)
+
+# Reclassify depth
+suitable_depth <- classify(resample_depth, rcl = rcl_depth)
+
+# Reclassify temp
+suitable_temp <- classify(sst_c, rcl = rcl_SST)
+
+# Combine suitable zone rasters
+suitable_zones <- c(suitable_depth, suitable_temp)
+
+# Find suitable locations by multiplying suitable zones
+suitable_locations <- lapp(suitable_zones, fun = function(sst, depth) sst * depth)
+```
+
+## Determine the most suitable EEZ
+
+```{r}
+# Set EEZ crs equal suitable_location crs 
+sf::st_crs(eez) <- terra::crs(suitable_locations)
+
+# Vectorize then rasterize  EEZ data
+eez_raster <- rasterize(eez, suitable_locations, field = "rgn_id")
+
+# Calculate the area of each cell
+cell_sizes <- cellSize(suitable_locations, unit = "km", mask = TRUE)
+
+# Make sure only cells classified as 1 contribute to area totals 
+suitable_area <- mask(cell_sizes, suitable_locations, maskvalues = 0)
+
+# Find the suitable area for each EEZ region
+area_per_eez <- zonal(suitable_area, eez_raster, fun = "sum", na.rm = TRUE)
+```
+
+# Visualize
+
+```{r}
+area_per_eez |> 
+  mutate(
+    Region = c("Oregon", "Northern California", "Central California", "Southern California", "Washington") 
+  ) |> 
+  kable(
+    col.names = c("Region ID", "Area $(km^2)$", "Region"),
+    digits = 0
+  ) |> 
+    kable_styling(bootstrap_options = "striped")
+```
+
+From this table, we can determine that Central California has the most suitable oyster habitat when compared to the other four regions. By contrast, Northern California has the least suitable oyster habitat. 
+
+```{r}
+# Convert suitable area per eez to a dataframe for plotting
+area_per_eez_df <- as_tibble(area_per_eez)
+
+# Add EEZ polygons back in
+map <- left_join(eez, area_per_eez_df, by = "rgn_id")
+
+# Convert suitable area spatraster to polygons for plotting
+area_poly <- as.polygons(suitable_area, dissolve = TRUE)
+
+# Visualize
+tm_shape(map) + 
+  tm_basemap("OpenStreetMap") +
+  tm_polygons() +
+  tm_fill(
+    fill = "area", 
+    col.scale = tm_scale(),
+    fill_alpha = 0.8,
+    fill.legend = tm_legend(title = "Suitable habitat area by region (km²)", position = tm_pos_out("right"))
+  ) +
+  tm_text(text = "rgn", size = 0.3) + 
+  tm_title(text = "Suitable Oyster Habitats of West Coast EEZs", size = 1) +
+  tm_compass(position = c("left", "bottom"), size = 0.8) +
+  tm_scalebar(position = tm_pos_out("right", "bottom")) +
+  tm_credits("Map 1", position = tm_pos_out("center", "bottom")) + 
+tm_shape(area_poly) +
+  tm_polygons(fill = "#FFEA00") +
+  tm_add_legend(
+    type = "polygons", 
+    labels = "Suitable Habitat Locations",
+    fill = "#FFEA00",
+    position = tm_pos_out("right")
+  )
+```
+
+The yellow areas represent the suitable habitat locations for oysters, where sea surface temperature is between 11-30°C and depth is 0-70 meters below sea level. The map shoes that these areas are concentrated in the EEZs of Central California, Southern California, and Washington. 
+
+Mediterranean mussel (*Mytilus galloprovincialis*) range:
+125 - 200 m
+10-20 deg C
+
+# Making a generalizable function
+
+arguments:
+minimum and maximum sea surface temperature
+minimum and maximum depth
+species name
+outputs:
+map of EEZ regions colored by amount of suitable area
+species name should be included in the map’s title
+Remember, functions can be hard to debug! So it’s highly recommended that you build the workflow for a single species (not in a function). Then you can start translating your workflow into a function by identifying the pieces that need to be generalized.
+
+Questions to ask yourself: which variables can stay the same for each species and which ones would need to change?
+
+
+```{r}
+
 ```
