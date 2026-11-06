@@ -1,5 +1,5 @@
 ---
-title: "Visualizing optimal habitat zones for potential aquaculture sites"
+title: "Visualizing optimal habitat zones for potential bivalve aquaculture sites"
 author: "Courtney Lorey"
 date: 2026-11-5
 format: typst
@@ -10,18 +10,15 @@ execute:
 ---
 
 # Objective
-Determine which Exclusive Economic Zones (EEZs) on the West Coast of the US are best suited to developing marine aquaculture for several species of oysters and Mediterranean mussels (*Mytilus galloprovincialis*) by creating a) an initial workflow and b) a generalizable workflow function such that new species can be evaluated for suitable habitat areas. Suitable locations will be determined based on range of suitable sea surface temperature (SST) and depth values for the species.
+Identify which Exclusive Economic Zones (EEZs) on the West Coast of the US are best suited to developing marine aquaculture for several species of bivalves by creating a) an initial workflow and b) a function to support a generalizable workflow such that new species can be evaluated for suitable habitat areas. Suitable locations will be determined based on range of suitable sea surface temperature (SST) and depth values for the species.
 
 ## Load packages
 ```{r}
 #| output: false
 
 library(tidyverse)
-library(spDataLarge)
 library(sf)
 library(tmap)
-library(gt)
-library(viridisLite)
 library(terra)
 library(stars)
 library(knitr)
@@ -313,5 +310,5 @@ suitable_habitat_area(10, 20, -125, -200, "Mediterranean Mussel")
 
 The yellow areas on the map represent the suitable habitat locations for Mediterranean mussels, where sea surface temperature is between 10-20°C and depth is 125-200 meters below sea level. The map shows that the West Coast EEZ with the most suitable habitat is Oregon.
 
-**Note:** The [SeaLifeBase](https://www.sealifebase.ca/summary/Mytilus-galloprovincialis.html) page on *Mytilus galloprovincialis* lists their depth range as 125 - 200 m, which seems very deep compared to other sources (where it is listed as having a depth range of 0-40 m), and considering the fact that it is an inter- and subtidal species. [FAO](https://www.fao.org/fishery/culturedspecies/mytilus_galloprovincialis/en) For the purposes of this exercise I chose to use the information from SeaLifeBase, but it is worth noting that depth information may be misreported on SeaLifeBase. 
+**Note:** The [SeaLifeBase](https://www.sealifebase.ca/summary/Mytilus-galloprovincialis.html) page on *Mytilus galloprovincialis* lists their depth range as 125 - 200 m, which is very deep compared to other sources that list the depth range as 0-40 m (and considering the fact that they are an inter- and subtidal species). [(FAO)](https://www.fao.org/fishery/culturedspecies/mytilus_galloprovincialis/en) Information from SeaLifeBase was used for the purpose of this exercise, but it is worth noting that depth information may be misreported on SeaLifeBase. 
 
