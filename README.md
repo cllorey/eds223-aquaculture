@@ -13,7 +13,10 @@ eds223-aquaculture
 └── west_coast_aquaculture_analysis.qmd
 |   .gitignore
     └───data
+        └─── wc_regions_clean.dbf
+        └─── wc_regions_clean.prj
         └─── wc_regions_clean.shp
+        └─── wc_regions_clean.shx
         └─── depth.tif
         └─── average_annual_sst_2008.tif
         └─── average_annual_sst_2009.tif
